@@ -5,6 +5,8 @@ interface PendingMessage {
   timer: NodeJS.Timeout;
   timestamp: number;
   from: string;
+  pushName?: string;
+  sender?: string;
 }
 
 export class MessageStore {
@@ -15,7 +17,7 @@ export class MessageStore {
     return this.pendingByJid.has(jid);
   }
 
-  add(messageId: string, message: proto.IWebMessageInfo, from: string, timeoutMs: number, onTimeout: () => void): void {
+  add(messageId: string, message: proto.IWebMessageInfo, from: string, timeoutMs: number, onTimeout: () => void, pushName?: string, sender?: string): void {
     const timer = setTimeout(() => {
       if (this.messages.has(messageId)) {
         onTimeout();
@@ -23,7 +25,7 @@ export class MessageStore {
       }
     }, timeoutMs);
 
-    this.messages.set(messageId, { message, timer, timestamp: Date.now(), from });
+    this.messages.set(messageId, { message, timer, timestamp: Date.now(), from, pushName, sender });
     this.pendingByJid.add(from);
   }
 

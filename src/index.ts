@@ -9,11 +9,22 @@ const logger = P({ level: 'silent' });
 const config = loadConfig();
 const messageStore = new MessageStore();
 
-function formatMessage(from: string, timestamp: number, connectedNumber: string): string {
+function formatMessage(from: string, timestamp: number, pushName?: string, sender?: string): string {
   const diffMins = Math.floor((Date.now() - timestamp) / 60000);
   const elapsed = `${diffMins} menit`;
-  const number = connectedNumber.replace('@s.whatsapp.net', '').split(':')[0];
-  return `Ada pesan baru sejak ${elapsed} yang lalu di ${number} yang belum dibaca.`;
+  
+  // Use sender (participant) if available, otherwise use from (remoteJid)
+  const jid = sender || from;
+  
+  // Extract clean number from various WhatsApp formats
+  let number = jid.replace('@s.whatsapp.net', '')
+                  .replace('@lid', '')
+                  .replace('@g.us', '')
+                  .split(':')[0];
+  
+  const senderName = pushName ? `${pushName} (${number})` : number;
+  
+  return `Ada pesan baru dari ${senderName} sejak ${elapsed} yang lalu.`;
 }
 
 function extractMessageText(message: proto.IMessage | null | undefined): string {
@@ -28,7 +39,7 @@ async function forwardMessage(sock: WASocket, messageId: string): Promise<void> 
   if (!pending) return;
 
   try {
-    const formattedText = formatMessage(pending.from, pending.timestamp, sock.user?.id || '');
+    const formattedText = formatMessage(pending.from, pending.timestamp, pending.pushName, pending.sender);
     
     await sock.sendMessage(`${config.forwardToNumber}@s.whatsapp.net`, {
       text: formattedText
@@ -91,6 +102,9 @@ async function startWhatsApp(): Promise<void> {
 
       const messageId = msg.key.id;
       const from = msg.key.remoteJid || '';
+      // Use remoteJidAlt for actual phone number, or participant for group messages, or fallback to remoteJid
+      const sender = msg.key.remoteJidAlt || msg.key.participant || from;
+      
       if (!messageId) continue;
 
       if (messageStore.hasPendingFrom(from)) {
@@ -107,10 +121,11 @@ async function startWhatsApp(): Promise<void> {
 
       console.log(`→ New message from ${from}: ${text.substring(0, 50)}`);
 
+      const pushName = msg.pushName || undefined;
       const timeoutMs = config.timeoutMinutes * 60 * 1000;
       messageStore.add(messageId, msg, from, timeoutMs, () => {
         forwardMessage(sock, messageId);
-      });
+      }, pushName, sender);
     }
   });
 
