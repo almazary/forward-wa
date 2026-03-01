@@ -9,8 +9,9 @@ Bot untuk memforward notifikasi pesan WhatsApp yang belum dibaca setelah waktu t
 3. Jika pesan **dibaca** sebelum timeout → forward dibatalkan
 4. Jika pesan **belum dibaca** sampai timeout → notifikasi dikirim ke nomor tujuan dengan format:
    ```
-   Ada pesan baru sejak 5 menit yang lalu di 628xxx yang belum dibaca.
+   Ada pesan baru dari Nama Pengirim (628xxx) sejak 5 menit yang lalu.
    ```
+   Jika nama tidak tersedia, hanya nomor yang ditampilkan.
 5. Hanya 1 pesan per nomor pengirim yang ditampung. Pesan berikutnya dari pengirim yang sama diabaikan selama masih ada yang pending
 
 ## Instalasi
