@@ -1,5 +1,6 @@
-import makeWASocket, { DisconnectReason, useMultiFileAuthState, WASocket, proto, makeCacheableSignalKeyStore, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import makeWASocket, { DisconnectReason, useMultiFileAuthState, WASocket, proto, makeCacheableSignalKeyStore, fetchLatestBaileysVersion, CacheStore } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
+import NodeCache from '@cacheable/node-cache';
 import P from 'pino';
 import qrcode from 'qrcode-terminal';
 import { loadConfig } from './config';
@@ -11,6 +12,22 @@ const config = loadConfig();
 const messageStore = new MessageStore();
 // Always points at the latest socket, so timers and broadcasts survive reconnects
 let currentSock: WASocket;
+
+const RECONNECT_MIN_MS = 5_000;
+const RECONNECT_MAX_MS = 5 * 60_000;
+let reconnectDelay = RECONNECT_MIN_MS;
+let reconnectTimer: NodeJS.Timeout | undefined;
+
+// Created once and shared by every socket. Each NodeCache runs an interval that is
+// never cleared, so letting Baileys create new ones on every reconnect leaks memory.
+let auth: Awaited<ReturnType<typeof useMultiFileAuthState>> | undefined;
+let keys: ReturnType<typeof makeCacheableSignalKeyStore>;
+const socketCaches = {
+  msgRetryCounterCache: new NodeCache({ stdTTL: 60 * 60, useClones: false }) as CacheStore,
+  placeholderResendCache: new NodeCache({ stdTTL: 60 * 60, useClones: false }) as CacheStore,
+  callOfferCache: new NodeCache({ stdTTL: 5 * 60, useClones: false }) as CacheStore,
+  userDevicesCache: new NodeCache({ stdTTL: 5 * 60, useClones: false }) as CacheStore
+};
 
 function formatMessage(from: string, timestamp: number, pushName?: string, sender?: string): string {
   const diffMins = Math.floor((Date.now() - timestamp) / 60000);
@@ -54,18 +71,36 @@ async function forwardMessage(messageId: string): Promise<void> {
   }
 }
 
+// Retry with exponential backoff so a long network outage doesn't spin up a new socket every few seconds
+function scheduleReconnect(): void {
+  if (reconnectTimer) return;
+  console.log(`Reconnecting in ${reconnectDelay / 1000}s`);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = undefined;
+    startWhatsApp().catch(error => {
+      console.error('✗ Failed to start WhatsApp socket:', error);
+      scheduleReconnect();
+    });
+  }, reconnectDelay);
+  reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
+}
+
 async function startWhatsApp(): Promise<void> {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+  if (!auth) {
+    auth = await useMultiFileAuthState('auth_info');
+    keys = makeCacheableSignalKeyStore(auth.state.keys, logger);
+  }
+  const { saveCreds } = auth;
   const { version } = await fetchLatestBaileysVersion();
-  const keys = makeCacheableSignalKeyStore(state.keys, logger);
   
   const sock = makeWASocket({
     version,
     auth: {
-      creds: state.creds,
+      creds: auth.state.creds,
       keys
     },
-    logger
+    logger,
+    ...socketCaches
   });
   currentSock = sock;
 
@@ -88,9 +123,10 @@ async function startWhatsApp(): Promise<void> {
       console.log('Reconnecting:', shouldReconnect);
       
       if (shouldReconnect) {
-        setTimeout(() => startWhatsApp(), 5000);
+        scheduleReconnect();
       }
     } else if (connection === 'open') {
+      reconnectDelay = RECONNECT_MIN_MS;
       console.log('\n✓ Connected to WhatsApp\n');
     }
   });
