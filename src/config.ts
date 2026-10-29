@@ -4,6 +4,7 @@ import path from 'path';
 interface Config {
   forwardToNumber: string;
   timeoutMinutes: number;
+  broadcastLabel: string;
 }
 
 export function loadConfig(): Config {
@@ -20,6 +21,7 @@ export function loadConfig(): Config {
 
   return {
     forwardToNumber: config.FORWARD_TO_NUMBER || '',
-    timeoutMinutes: parseInt(config.TIMEOUT_MINUTES) || 5
+    timeoutMinutes: parseInt(config.TIMEOUT_MINUTES) || 5,
+    broadcastLabel: config.BROADCAST_LABEL || 'Subscribers'
   };
 }

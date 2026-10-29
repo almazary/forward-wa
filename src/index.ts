@@ -4,10 +4,13 @@ import P from 'pino';
 import qrcode from 'qrcode-terminal';
 import { loadConfig } from './config';
 import { MessageStore } from './messageStore';
+import { handleBroadcastCommand, isSelfChat } from './broadcast';
 
 const logger = P({ level: 'silent' });
 const config = loadConfig();
 const messageStore = new MessageStore();
+// Always points at the latest socket, so timers and broadcasts survive reconnects
+let currentSock: WASocket;
 
 function formatMessage(from: string, timestamp: number, pushName?: string, sender?: string): string {
   const diffMins = Math.floor((Date.now() - timestamp) / 60000);
@@ -34,14 +37,14 @@ function extractMessageText(message: proto.IMessage | null | undefined): string 
          '[Media/Other]';
 }
 
-async function forwardMessage(sock: WASocket, messageId: string): Promise<void> {
+async function forwardMessage(messageId: string): Promise<void> {
   const pending = messageStore.get(messageId);
   if (!pending) return;
 
   try {
     const formattedText = formatMessage(pending.from, pending.timestamp, pending.pushName, pending.sender);
     
-    await sock.sendMessage(`${config.forwardToNumber}@s.whatsapp.net`, {
+    await currentSock.sendMessage(`${config.forwardToNumber}@s.whatsapp.net`, {
       text: formattedText
     });
     
@@ -54,15 +57,17 @@ async function forwardMessage(sock: WASocket, messageId: string): Promise<void> 
 async function startWhatsApp(): Promise<void> {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
   const { version } = await fetchLatestBaileysVersion();
+  const keys = makeCacheableSignalKeyStore(state.keys, logger);
   
   const sock = makeWASocket({
     version,
     auth: {
       creds: state.creds,
-      keys: makeCacheableSignalKeyStore(state.keys, logger)
+      keys
     },
     logger
   });
+  currentSock = sock;
 
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -96,6 +101,11 @@ async function startWhatsApp(): Promise<void> {
     if (type !== 'notify') return;
 
     for (const msg of messages) {
+      if (msg.key.fromMe && isSelfChat(sock, msg.key.remoteJid)) {
+        handleBroadcastCommand({ getSock: () => currentSock, keys, labelName: config.broadcastLabel, logger }, msg)
+          .catch(err => console.error('✗ Broadcast command error:', err));
+        continue;
+      }
       if (msg.key.fromMe) continue;
       if (!msg.message) continue;
       if (msg.key.remoteJid === 'status@broadcast') continue;
@@ -124,7 +134,7 @@ async function startWhatsApp(): Promise<void> {
       const pushName = msg.pushName || undefined;
       const timeoutMs = config.timeoutMinutes * 60 * 1000;
       messageStore.add(messageId, msg, from, timeoutMs, () => {
-        forwardMessage(sock, messageId);
+        forwardMessage(messageId);
       }, pushName, sender);
     }
   });
@@ -168,6 +178,7 @@ if (!config.forwardToNumber) {
 
 console.log(`Starting WhatsApp Forward Bot`);
 console.log(`Forward to: ${config.forwardToNumber}`);
-console.log(`Timeout: ${config.timeoutMinutes} minutes\n`);
+console.log(`Timeout: ${config.timeoutMinutes} minutes`);
+console.log(`Broadcast label: ${config.broadcastLabel}\n`);
 
 startWhatsApp().catch(console.error);
