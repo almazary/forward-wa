@@ -102,7 +102,7 @@ async function startWhatsApp(): Promise<void> {
 
     for (const msg of messages) {
       if (msg.key.fromMe && isSelfChat(sock, msg.key.remoteJid)) {
-        handleBroadcastCommand({ getSock: () => currentSock, keys, labelName: config.broadcastLabel, logger }, msg)
+        handleBroadcastCommand({ getSock: () => currentSock, keys, listName: config.broadcastList, logger }, msg)
           .catch(err => console.error('✗ Broadcast command error:', err));
         continue;
       }
@@ -179,6 +179,6 @@ if (!config.forwardToNumber) {
 console.log(`Starting WhatsApp Forward Bot`);
 console.log(`Forward to: ${config.forwardToNumber}`);
 console.log(`Timeout: ${config.timeoutMinutes} minutes`);
-console.log(`Broadcast label: ${config.broadcastLabel}\n`);
+console.log(`Broadcast list: ${config.broadcastList}\n`);
 
 startWhatsApp().catch(console.error);

@@ -1,4 +1,4 @@
-import { WASocket, WAMessage, SignalKeyStore, downloadMediaMessage, areJidsSameUser, jidNormalizedUser, isLidUser, isPnUser } from '@whiskeysockets/baileys';
+import { WASocket, WAMessage, SignalKeyStore, ChatMutation, LTHashState, S_WHATSAPP_NET, downloadMediaMessage, areJidsSameUser, jidNormalizedUser, extractSyncdPatches, decodeSyncdSnapshot, decodePatches, newLTHashState } from '@whiskeysockets/baileys';
 import P from 'pino';
 
 const COMMAND = /^\/bc(?:\s+|$)/i;
@@ -8,7 +8,7 @@ const MAX_DELAY_MS = 30_000;
 interface BroadcastContext {
   getSock: () => WASocket;
   keys: SignalKeyStore;
-  labelName: string;
+  listName: string;
   logger: P.Logger;
 }
 
@@ -39,51 +39,54 @@ function commandBody(msg: WAMessage): string | null {
   return text.replace(COMMAND, '').trim();
 }
 
-// Labels already synced are not re-sent by WhatsApp, so reset the "regular"
-// app state collection (where labels live) and resync it from a full snapshot
-async function fetchLabelMembers(ctx: BroadcastContext): Promise<string[] | null> {
+const MAX_SYNC_ROUNDS = 10;
+
+// WhatsApp Business broadcast lists live in the "regular" app state collection,
+// but Baileys emits no event for them, so fetch and decode a fresh snapshot ourselves.
+// This is read-only: the bot's own app state version is left untouched.
+async function fetchBroadcastList(ctx: BroadcastContext): Promise<string[] | null> {
   const sock = ctx.getSock();
-  const labels = new Map<string, string>();
-  const members = new Map<string, Set<string>>();
+  const getKey = async (keyId: string) => (await ctx.keys.get('app-state-sync-key', [keyId]))[keyId];
+  const mutations: Record<string, ChatMutation> = {};
+  let state: LTHashState | undefined;
 
-  const onEdit = (label: { id: string; name: string; deleted: boolean }) => {
-    if (label.deleted) labels.delete(label.id);
-    else labels.set(label.id, label.name);
-  };
-  const onAssociation = ({ association, type }: { association: { type: unknown; chatId: string; labelId: string }; type: 'add' | 'remove' }) => {
-    if (association.type !== 'label_jid') return;
-    const set = members.get(association.labelId) || new Set<string>();
-    if (type === 'add') set.add(association.chatId);
-    else set.delete(association.chatId);
-    members.set(association.labelId, set);
-  };
-
-  sock.ev.on('labels.edit', onEdit);
-  sock.ev.on('labels.association', onAssociation);
-  try {
-    await ctx.keys.set({ 'app-state-sync-version': { regular: null } });
-    await sock.resyncAppState(['regular'], false);
-  } finally {
-    sock.ev.off('labels.edit', onEdit);
-    sock.ev.off('labels.association', onAssociation);
-  }
-
-  const wanted = ctx.labelName.toLowerCase();
-  const labelId = [...labels].find(([, name]) => name.toLowerCase() === wanted)?.[0];
-  if (!labelId) return null;
-
-  // The same person can be labelled under both their phone JID and their LID
-  const recipients = new Map<string, string>();
-  for (const chatId of members.get(labelId) || []) {
-    if (!isPnUser(chatId) && !isLidUser(chatId)) continue; // skip groups etc.
-    let key = jidNormalizedUser(chatId);
-    if (isLidUser(chatId)) {
-      key = (await sock.signalRepository.lidMapping.getPNForLID(chatId).catch(() => null)) || key;
-      key = jidNormalizedUser(key);
+  for (let round = 0; round < MAX_SYNC_ROUNDS; round++) {
+    const result = await sock.query({
+      tag: 'iq',
+      attrs: { to: S_WHATSAPP_NET, xmlns: 'w:sync:app:state', type: 'set' },
+      content: [{
+        tag: 'sync',
+        attrs: {},
+        content: [{ tag: 'collection', attrs: { name: 'regular', version: String(state?.version ?? 0), return_snapshot: String(!state) } }]
+      }]
+    });
+    const { snapshot, patches, hasMorePatches } = (await extractSyncdPatches(result, {})).regular;
+    if (snapshot) {
+      const decoded = await decodeSyncdSnapshot('regular', snapshot, getKey, undefined, false);
+      state = decoded.state;
+      Object.assign(mutations, decoded.mutationMap);
     }
-    if (!recipients.has(key)) recipients.set(key, chatId);
+    if (patches.length) {
+      const decoded = await decodePatches('regular', patches, state || newLTHashState(), getKey, {}, undefined, ctx.logger, false);
+      state = decoded.state;
+      Object.assign(mutations, decoded.mutationMap);
+    }
+    if (!hasMorePatches) break;
   }
-  return [...recipients.values()];
+
+  const wanted = ctx.listName.toLowerCase();
+  const list = Object.values(mutations)
+    .map(m => m.index[0] === 'business_broadcast_list' ? m.syncAction.value?.businessBroadcastListAction : undefined)
+    .find(a => a && !a.deleted && a.listName?.toLowerCase() === wanted);
+  if (!list) return null;
+
+  // Prefer the phone number JID; dedupe in case a participant is listed twice
+  const recipients = new Set<string>();
+  for (const p of list.participants || []) {
+    const jid = p.pnJid || p.lidJid;
+    if (jid) recipients.add(jidNormalizedUser(jid));
+  }
+  return [...recipients];
 }
 
 async function buildContent(ctx: BroadcastContext, msg: WAMessage, body: string) {
@@ -128,22 +131,22 @@ export async function handleBroadcastCommand(ctx: BroadcastContext, msg: WAMessa
   running = true;
 
   try {
-    const recipients = await fetchLabelMembers(ctx);
+    const recipients = await fetchBroadcastList(ctx);
     if (!recipients) {
-      await reply(`✗ Label "${ctx.labelName}" tidak ditemukan.`);
+      await reply(`✗ Daftar siaran "${ctx.listName}" tidak ditemukan.`);
       return true;
     }
 
     const hasMedia = !!(msg.message?.imageMessage || msg.message?.videoMessage);
     if (!body && !hasMedia) {
       const list = recipients.map((jid, i) => `${i + 1}. ${displayNumber(jid)}`).join('\n');
-      await reply(`Label "${ctx.labelName}" berisi ${recipients.length} kontak:\n${list}\n\nKirim "/bc isi pesan" untuk broadcast.`);
+      await reply(`Daftar siaran "${ctx.listName}" berisi ${recipients.length} kontak:\n${list}\n\nKirim "/bc isi pesan" untuk broadcast.`);
       return true;
     }
 
     const content = await buildContent(ctx, msg, body);
     const estimateMins = Math.ceil(recipients.length * (MIN_DELAY_MS + MAX_DELAY_MS) / 2 / 60000);
-    await reply(`▶ Mulai broadcast ke ${recipients.length} kontak label "${ctx.labelName}" (perkiraan ${estimateMins} menit).`);
+    await reply(`▶ Mulai broadcast ke ${recipients.length} kontak daftar siaran "${ctx.listName}" (perkiraan ${estimateMins} menit).`);
     console.log(`▶ Broadcast to ${recipients.length} recipients`);
 
     const failed: string[] = [];

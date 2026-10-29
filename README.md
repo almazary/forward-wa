@@ -31,16 +31,17 @@ TIMEOUT_MINUTES=5
 
 - `FORWARD_TO_NUMBER`: Nomor tujuan notifikasi (format internasional tanpa `+`)
 - `TIMEOUT_MINUTES`: Waktu tunggu sebelum forward (default: 5 menit)
-- `BROADCAST_LABEL`: Nama label WhatsApp Business untuk broadcast (default: `Subscribers`)
+- `BROADCAST_LIST`: Nama daftar siaran (broadcast list) WhatsApp Business untuk broadcast (default: `Subscribers`)
 
-## Broadcast ke Label
+## Broadcast ke Daftar Siaran
 
 Pengganti fitur broadcast WhatsApp Business yang berbayar: bot mengirim pesan satu per satu ke
-semua kontak berlabel `BROADCAST_LABEL`, dengan jeda acak 10–30 detik antar pesan.
+semua penerima daftar siaran bernama `BROADCAST_LIST`, dengan jeda acak 10–30 detik antar pesan.
+Daftar penerima dibaca ulang dari WhatsApp setiap kali `/bc` dipakai, jadi perubahan daftar di HP langsung ikut.
 
 Dari HP, kirim pesan ke chat diri sendiri (**Message yourself**):
 
-- `/bc` → menampilkan daftar kontak di label tanpa mengirim apa pun
+- `/bc` → menampilkan penerima daftar siaran tanpa mengirim apa pun
 - `/bc isi pesan` → broadcast teks (link boleh; pratinjau link dari HP ikut dikirim jika ada)
 - Gambar/video dengan caption `/bc isi caption` → broadcast media
 
