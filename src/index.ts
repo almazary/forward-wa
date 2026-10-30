@@ -34,7 +34,8 @@ const socketCaches = {
 const reminderContext = {
   getSock: () => currentSock,
   isConnected: () => connected,
-  recipients: config.reminderNumbers
+  recipients: config.reminderNumbers,
+  gemini: config.geminiApiKey ? { apiKey: config.geminiApiKey, model: config.geminiModel } : undefined
 };
 
 function formatMessage(from: string, timestamp: number, pushName?: string, sender?: string): string {
@@ -228,7 +229,8 @@ console.log(`Starting WhatsApp Forward Bot`);
 console.log(`Forward to: ${config.forwardToNumber}`);
 console.log(`Timeout: ${config.timeoutMinutes} minutes`);
 console.log(`Broadcast list: ${config.broadcastList}`);
-console.log(`Uniform reminder to: ${config.reminderNumbers.join(', ') || '(disabled)'}\n`);
+console.log(`Uniform reminder to: ${config.reminderNumbers.join(', ') || '(disabled)'}`);
+console.log(`Encouragement: ${config.geminiApiKey ? config.geminiModel : '(disabled)'}\n`);
 
 startWhatsApp().catch(console.error);
 startReminder(reminderContext);

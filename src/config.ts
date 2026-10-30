@@ -6,6 +6,8 @@ interface Config {
   timeoutMinutes: number;
   broadcastList: string;
   reminderNumbers: string[];
+  geminiApiKey: string;
+  geminiModel: string;
 }
 
 export function loadConfig(): Config {
@@ -24,6 +26,8 @@ export function loadConfig(): Config {
     forwardToNumber: config.FORWARD_TO_NUMBER || '',
     timeoutMinutes: parseInt(config.TIMEOUT_MINUTES) || 5,
     broadcastList: config.BROADCAST_LIST || 'Subscribers',
-    reminderNumbers: (config.REMINDER_NUMBERS || '').split(',').map((n: string) => n.trim()).filter(Boolean)
+    reminderNumbers: (config.REMINDER_NUMBERS || '').split(',').map((n: string) => n.trim()).filter(Boolean),
+    geminiApiKey: config.GEMINI_API_KEY || '',
+    geminiModel: config.GEMINI_MODEL || 'gemini-flash-latest'
   };
 }
