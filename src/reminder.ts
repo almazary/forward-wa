@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { WASocket, WAMessage, jidNormalizedUser } from '@whiskeysockets/baileys';
 import { DayContext, GeminiConfig, hasWeek, weeklyEncouragement } from './encouragement';
+import { ClassPlan, classPlans } from './schedule';
 
 // Daily reminder of the kids' school uniform, sent at 05:00 WIB
 const SEND_HOUR = 5;
@@ -36,6 +37,7 @@ interface ReminderState {
 // What a given day needs to say; null when there is nothing to send
 interface DayPlan {
   uniform?: string;
+  classes?: ClassPlan[];
   todayHoliday?: string;
   tomorrowHoliday?: string;
 }
@@ -120,7 +122,10 @@ function planDay(today: Date, holidays: Holidays | null): DayPlan | null {
   if (isSchoolDay(today)) {
     const holiday = holidays?.get(dateKey(today));
     if (holiday) plan.todayHoliday = holiday.join(', ');
-    else plan.uniform = uniformFor(today);
+    else {
+      plan.uniform = uniformFor(today);
+      plan.classes = classPlans(today);
+    }
   }
   // Holidays on Saturday/Sunday don't matter; a Monday holiday is announced on Sunday
   const tomorrowHoliday = isSchoolDay(tomorrow) ? holidays?.get(dateKey(tomorrow)) : undefined;
@@ -131,6 +136,7 @@ function planDay(today: Date, holidays: Holidays | null): DayPlan | null {
 function describeDay(day: Date, plan: DayPlan): string {
   const parts: string[] = [];
   if (plan.uniform) parts.push(`anak pakai seragam ${plan.uniform}`);
+  for (const c of plan.classes || []) parts.push(`kelas ${c.className}: ${c.lessons.join(', ')}`);
   if (plan.todayHoliday) parts.push(`hari libur ${plan.todayHoliday}, anak tidak sekolah`);
   if (plan.tomorrowHoliday) parts.push(`besok libur ${plan.tomorrowHoliday}`);
   return `${formatDate(day)}: ${parts.join('; ')}`;
@@ -145,6 +151,12 @@ export function buildReminder(today: Date, holidays: Holidays | null, encouragem
   const lines: string[] = [];
   if (plan.todayHoliday) lines.push(`Hari ini, ${formatDate(today)}, libur: ${plan.todayHoliday}.`);
   if (plan.uniform) lines.push(`Seragam SD hari ini, ${formatDate(today)}:\n*${plan.uniform}*`);
+  for (const c of plan.classes || []) {
+    const classLines = [`Kelas ${c.className}: ${c.lessons.join(', ')}`];
+    if (c.bringSportswear) classLines.push('*Bawa baju olahraga* (PJOK)');
+    if (c.dismissal) classLines.push(`Pulang ${c.dismissal}`);
+    lines.push(classLines.join('\n'));
+  }
   if (plan.tomorrowHoliday) lines.push(`Besok, ${formatDate(addDays(today, 1))}, libur: ${plan.tomorrowHoliday}. Tidak sekolah.`);
   if (!holidays && isSchoolDay(today)) lines.push('Catatan: info hari libur tidak bisa dicek hari ini.');
   if (encouragement) lines.push(encouragement);

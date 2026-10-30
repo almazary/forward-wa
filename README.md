@@ -57,6 +57,8 @@ Setiap hari jam 05.00 WIB bot mengirim pengingat seragam ke nomor di `REMINDER_N
 
 - Senin–Selasa: Merah Putih · Rabu–Kamis: Batik
 - Jumat: ke-1 Olahraga, ke-2 & ke-3 HW, ke-4 Tapak Suci, ke-5 Olahraga
+- Jadwal pelajaran hari itu untuk kelas 2B dan 4A (SD Muhammadiyah Pahandut T.A. 2026/2027,
+  di `src/schedule.ts`), termasuk pengingat bawa baju olahraga saat ada PJOK dan jam pulang
 - Libur nasional dari [api-harilibur.pages.dev](https://api-harilibur.pages.dev/) diberitahukan
   sehari sebelumnya (libur Senin diberitahukan hari Minggu). Libur di hari Sabtu/Minggu diabaikan.
 
