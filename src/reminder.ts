@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { WASocket, WAMessage, jidNormalizedUser } from '@whiskeysockets/baileys';
-import { DayContext, GeminiConfig, weeklyEncouragement } from './encouragement';
+import { DayContext, GeminiConfig, hasWeek, weeklyEncouragement } from './encouragement';
 
 // Daily reminder of the kids' school uniform, sent at 05:00 WIB
 const SEND_HOUR = 5;
@@ -153,7 +153,7 @@ export function buildReminder(today: Date, holidays: Holidays | null, encouragem
 
 // The day's encouragement line, from the set generated for its week. Only generated
 // when the holidays are known, so the week's context is right; failures just skip the line.
-async function encouragementFor(ctx: ReminderContext, day: Date, holidays: Holidays | null, store: boolean): Promise<string | undefined> {
+async function encouragementFor(ctx: ReminderContext, day: Date, holidays: Holidays | null): Promise<string | undefined> {
   if (!ctx.gemini || !holidays) return undefined;
   const monday = weekStart(day);
   const days: DayContext[] = [];
@@ -163,7 +163,7 @@ async function encouragementFor(ctx: ReminderContext, day: Date, holidays: Holid
     if (plan) days.push({ date: dateKey(d), description: describeDay(d, plan) });
   }
   try {
-    const byDate = await weeklyEncouragement(dateKey(monday), days, ctx.gemini, store);
+    const byDate = await weeklyEncouragement(dateKey(monday), dateKey(weekStart(wibToday())), days, ctx.gemini);
     return byDate[dateKey(day)];
   } catch (error) {
     console.error('✗ Failed to generate encouragement:', (error as Error).message);
@@ -208,7 +208,7 @@ async function check(ctx: ReminderContext): Promise<void> {
     writeState({ date: key, sentTo: ctx.recipients });
     return;
   }
-  const text = buildReminder(today, holidays, await encouragementFor(ctx, today, holidays, true))!;
+  const text = buildReminder(today, holidays, await encouragementFor(ctx, today, holidays))!;
 
   for (const number of pending) {
     try {
@@ -248,11 +248,14 @@ export async function handleReminderCommand(ctx: ReminderContext, msg: WAMessage
   } catch (error) {
     console.error('✗ Failed to fetch holidays:', (error as Error).message);
   }
-  // Only the current week's lines are saved; previews of other weeks are generated on the fly
-  const sameWeek = dateKey(weekStart(day)) === dateKey(weekStart(wibToday()));
-  const encouragement = planDay(day, holidays) ? await encouragementFor(ctx, day, holidays, sameWeek) : undefined;
-  const reminder = buildReminder(day, holidays, encouragement) || `(Tidak ada pengingat untuk ${formatDate(day)})`;
   const selfJid = jidNormalizedUser(ctx.getSock().user!.id);
+  const hasPlan = !!planDay(day, holidays);
+  // Generating a week's lines takes up to a minute, so say so instead of looking stuck
+  if (hasPlan && ctx.gemini && holidays && !hasWeek(dateKey(weekStart(day)))) {
+    await ctx.getSock().sendMessage(selfJid, { text: 'Menyiapkan kata penyemangat untuk minggu ini (sekali seminggu, sekitar 1 menit)...' });
+  }
+  const encouragement = hasPlan ? await encouragementFor(ctx, day, holidays) : undefined;
+  const reminder = buildReminder(day, holidays, encouragement) || `(Tidak ada pengingat untuk ${formatDate(day)})`;
   await ctx.getSock().sendMessage(selfJid, { text: `Pratinjau pengingat:\n\n${reminder}` });
   return true;
 }

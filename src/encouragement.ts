@@ -16,10 +16,8 @@ export interface DayContext {
   description: string; // e.g. "Senin, 2 November 2026: anak pakai seragam Merah Putih"
 }
 
-interface WeekState {
-  week: string;
-  byDate: Record<string, string>;
-}
+// Week (its Monday) -> date -> line
+type WeekState = Record<string, Record<string, string>>;
 
 // Step 1: a Google Search grounded summary of what families in Indonesia are going through
 // this week (weather, school calendar, national moments), used as material for the lines
@@ -100,22 +98,34 @@ async function generate(week: string, days: DayContext[], gemini: GeminiConfig):
   return byDate;
 }
 
-function readState(): WeekState | undefined {
+function readState(): WeekState {
   try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    // Earlier versions saved a single week as { week, byDate }
+    if (typeof state?.week === 'string') return { [state.week]: state.byDate };
+    return state && typeof state === 'object' ? state : {};
   } catch {
-    return undefined;
+    return {};
   }
 }
 
-// Returns the week's lines, generating and saving them on first use.
-// With store = false (previews of another week) the saved week is left alone.
-export async function weeklyEncouragement(week: string, days: DayContext[], gemini: GeminiConfig, store = true): Promise<Record<string, string>> {
+export function hasWeek(week: string): boolean {
+  return week in readState();
+}
+
+// Returns the week's lines, generating them once per week and saving them.
+// Weeks before currentWeek are dropped when saving.
+export async function weeklyEncouragement(week: string, currentWeek: string, days: DayContext[], gemini: GeminiConfig): Promise<Record<string, string>> {
   const saved = readState();
-  if (saved?.week === week) return saved.byDate;
+  if (saved[week]) return saved[week];
 
   const byDate = await generate(week, days, gemini);
-  if (store) fs.writeFileSync(STATE_FILE, JSON.stringify({ week, byDate }, null, 2));
+  const state = readState();
+  state[week] = byDate;
+  for (const key of Object.keys(state)) {
+    if (key < currentWeek) delete state[key];
+  }
+  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   console.log(`✓ Generated encouragement for week of ${week} (${Object.keys(byDate).length} days)`);
   return byDate;
 }
