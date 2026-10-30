@@ -4,3 +4,4 @@ auth_info
 *.log
 .env
 .env.local
+reminder-state.json

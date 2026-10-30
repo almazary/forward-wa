@@ -27,6 +27,7 @@ Edit file `.env`:
 ```env
 FORWARD_TO_NUMBER=628123456789
 TIMEOUT_MINUTES=5
+REMINDER_NUMBERS=628123456789,628987654321
 ```
 
 - `FORWARD_TO_NUMBER`: Nomor tujuan notifikasi (format internasional tanpa `+`)
@@ -47,6 +48,20 @@ Dari HP, kirim pesan ke chat diri sendiri (**Message yourself**):
 
 Bot melaporkan mulai dan hasilnya (jumlah terkirim/gagal) ke chat diri sendiri. Hanya satu
 broadcast yang bisa berjalan pada satu waktu.
+
+## Pengingat Seragam SD
+
+Setiap hari jam 05.00 WIB bot mengirim pengingat seragam ke nomor di `REMINDER_NUMBERS`
+(dipisah koma; kosongkan untuk mematikan):
+
+- Senin–Selasa: Merah Putih · Rabu–Kamis: Batik
+- Jumat: ke-1 Olahraga, ke-2 & ke-3 HW, ke-4 Tapak Suci, ke-5 Olahraga
+- Libur nasional dari [api-harilibur.pages.dev](https://api-harilibur.pages.dev/) diberitahukan
+  sehari sebelumnya (libur Senin diberitahukan hari Minggu). Libur di hari Sabtu/Minggu diabaikan.
+
+Jika bot sedang terputus jam 05.00, pengiriman dicoba terus sampai jam 09.00. Status kirim harian
+disimpan di `reminder-state.json` agar tidak terkirim dobel. Kirim `/seragam` (atau
+`/seragam 2026-08-24`) ke chat diri sendiri untuk melihat pratinjau tanpa mengirim ke siapa pun.
 
 ## Menjalankan Bot
 

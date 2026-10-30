@@ -6,12 +6,14 @@ import qrcode from 'qrcode-terminal';
 import { loadConfig } from './config';
 import { MessageStore } from './messageStore';
 import { handleBroadcastCommand, isSelfChat } from './broadcast';
+import { handleReminderCommand, startReminder } from './reminder';
 
 const logger = P({ level: 'silent' });
 const config = loadConfig();
 const messageStore = new MessageStore();
 // Always points at the latest socket, so timers and broadcasts survive reconnects
 let currentSock: WASocket;
+let connected = false;
 
 const RECONNECT_MIN_MS = 5_000;
 const RECONNECT_MAX_MS = 5 * 60_000;
@@ -27,6 +29,12 @@ const socketCaches = {
   placeholderResendCache: new NodeCache({ stdTTL: 60 * 60, useClones: false }) as CacheStore,
   callOfferCache: new NodeCache({ stdTTL: 5 * 60, useClones: false }) as CacheStore,
   userDevicesCache: new NodeCache({ stdTTL: 5 * 60, useClones: false }) as CacheStore
+};
+
+const reminderContext = {
+  getSock: () => currentSock,
+  isConnected: () => connected,
+  recipients: config.reminderNumbers
 };
 
 function formatMessage(from: string, timestamp: number, pushName?: string, sender?: string): string {
@@ -116,6 +124,7 @@ async function startWhatsApp(): Promise<void> {
       const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       
+      connected = false;
       console.log('Connection closed.');
       if (lastDisconnect?.error) {
         console.log('Error:', (lastDisconnect.error as any).message || lastDisconnect.error);
@@ -127,6 +136,7 @@ async function startWhatsApp(): Promise<void> {
       }
     } else if (connection === 'open') {
       reconnectDelay = RECONNECT_MIN_MS;
+      connected = true;
       console.log('\n✓ Connected to WhatsApp\n');
     }
   });
@@ -140,6 +150,8 @@ async function startWhatsApp(): Promise<void> {
       if (msg.key.fromMe && isSelfChat(sock, msg.key.remoteJid)) {
         handleBroadcastCommand({ getSock: () => currentSock, keys, listName: config.broadcastList, logger }, msg)
           .catch(err => console.error('✗ Broadcast command error:', err));
+        handleReminderCommand(reminderContext, msg)
+          .catch(err => console.error('✗ Reminder command error:', err));
         continue;
       }
       if (msg.key.fromMe) continue;
@@ -215,6 +227,8 @@ if (!config.forwardToNumber) {
 console.log(`Starting WhatsApp Forward Bot`);
 console.log(`Forward to: ${config.forwardToNumber}`);
 console.log(`Timeout: ${config.timeoutMinutes} minutes`);
-console.log(`Broadcast list: ${config.broadcastList}\n`);
+console.log(`Broadcast list: ${config.broadcastList}`);
+console.log(`Uniform reminder to: ${config.reminderNumbers.join(', ') || '(disabled)'}\n`);
 
 startWhatsApp().catch(console.error);
+startReminder(reminderContext);

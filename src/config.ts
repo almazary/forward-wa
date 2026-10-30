@@ -5,6 +5,7 @@ interface Config {
   forwardToNumber: string;
   timeoutMinutes: number;
   broadcastList: string;
+  reminderNumbers: string[];
 }
 
 export function loadConfig(): Config {
@@ -22,6 +23,7 @@ export function loadConfig(): Config {
   return {
     forwardToNumber: config.FORWARD_TO_NUMBER || '',
     timeoutMinutes: parseInt(config.TIMEOUT_MINUTES) || 5,
-    broadcastList: config.BROADCAST_LIST || 'Subscribers'
+    broadcastList: config.BROADCAST_LIST || 'Subscribers',
+    reminderNumbers: (config.REMINDER_NUMBERS || '').split(',').map((n: string) => n.trim()).filter(Boolean)
   };
 }
