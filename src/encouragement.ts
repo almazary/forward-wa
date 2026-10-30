@@ -23,7 +23,7 @@ type WeekState = Record<string, Record<string, string>>;
 // this week (weather, school calendar, national moments), used as material for the lines
 async function fetchIndonesiaContext(week: string, gemini: GeminiConfig): Promise<string> {
   const end = new Date(new Date(`${week}T00:00:00Z`).getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const prompt = `Gunakan Google Search untuk mencari kondisi terkini di Indonesia pada minggu ${week} sampai ${end} yang dirasakan keluarga biasa dengan anak SD: cuaca dan musim, kalender dan kegiatan sekolah (ujian, hari peringatan, libur), momen nasional yang positif, dan suasana sehari-hari.
+  const prompt = `Gunakan Google Search untuk mencari kondisi terkini di Indonesia pada minggu ${week} sampai ${end} yang dirasakan keluarga Muslim biasa dengan anak SD: cuaca dan musim, kalender dan kegiatan sekolah (ujian, hari peringatan, libur), bulan dan momen dalam kalender Hijriyah, momen nasional yang positif, dan suasana sehari-hari.
 Abaikan politik, bencana, kriminal, tragedi, dan hal kontroversial.
 Tulis ringkasan berupa poin-poin singkat (maksimal 6 poin) dalam bahasa Indonesia.`;
   const res = await callGemini(gemini, { contents: [{ parts: [{ text: prompt }] }], tools: [{ google_search: {} }] });
@@ -43,18 +43,20 @@ async function callGemini(gemini: GeminiConfig, body: object): Promise<string> {
 }
 
 function buildPrompt(days: DayContext[], indonesiaContext: string): string {
-  return `Tulis pesan penyemangat pagi untuk sepasang orang tua (suami dan istri) yang setiap pagi menyiapkan anak SD mereka berangkat sekolah dan kadang merasa lelah dengan rutinitas itu. Pesan dikirim jam 5 pagi bersama pengingat seragam sekolah.
+  return `Tulis pesan penyemangat pagi bernuansa Islami untuk sepasang orang tua Muslim (suami dan istri) yang setiap pagi menyiapkan anak SD mereka berangkat sekolah dan kadang merasa lelah dengan rutinitas itu. Pesan dikirim jam 5 pagi, selepas Subuh, bersama pengingat seragam sekolah.
 
 Ketentuan setiap pesan:
 - Bahasa Indonesia yang santai, hangat, dan tulus, seperti teman dekat yang mengerti.
 - 1 sampai 2 kalimat, paling banyak 35 kata.
 - Tanpa emoji, tanpa tagar, tanpa tanda kutip, tanpa salam pembuka.
 - Jangan menggurui dan hindari kalimat klise atau motivasi yang dibuat-buat.
+- Bernuansa Islami secara alami: misalnya niat dan ikhlas, lelah yang bernilai pahala, mendidik anak sebagai amanah, doa singkat untuk anak dan keluarga, syukur, tawakal, atau keberkahan pagi. Ungkapan seperti Bismillah, Alhamdulillah, InsyaAllah, atau Barakallahu fiikum boleh dipakai secukupnya, jangan di setiap pesan.
+- Jangan mengutip ayat Al-Qur'an atau hadits secara harfiah dan jangan menyebut nomor surat, ayat, atau perawi. Cukup sampaikan maknanya dengan bahasa sendiri.
 
 Untuk satu minggu ini:
 - Setiap hari harus berbeda sudut pandang dan pilihan kata, misalnya menghargai usaha kecil, kekompakan suami-istri, tumbuh kembang anak, boleh beristirahat, humor ringan, atau rasa syukur.
 - Jangan memakai motif yang sama (misalnya kopi, tarik napas, kaos kaki, bekal) lebih dari sekali dalam seminggu.
-- Kaitkan dengan konteks hari itu bila pas (awal minggu, akhir minggu, kegiatan sekolah, hari libur), tapi tidak harus.
+- Kaitkan dengan konteks hari itu bila pas (awal minggu, hari Jumat yang berkah, akhir minggu, kegiatan sekolah, hari libur, momen Hijriyah), tapi tidak harus.
 
 Kondisi Indonesia minggu ini (hasil pencarian, pakai sebagai inspirasi ringan agar pesan terasa relevan; jangan menyebut angka, tanggal, atau klaim spesifik, dan jangan memasukkan semuanya):
 ${indonesiaContext || '(tidak tersedia)'}
